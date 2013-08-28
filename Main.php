@@ -20,59 +20,65 @@ class FameloDomainChange {
 			return;
 		}
 
+		$newDomain = $this->getWordpressUri();
+
 		if (get_option('famelo_wordpress_uri') === FALSE) {
-			add_option('famelo_wordpress_uri', $this->getWordpressUri());
+			add_option('famelo_wordpress_uri', get_option('siteurl'));
 		}
 		if (get_option('famelo_wordpress_path') === FALSE) {
 			add_option('famelo_wordpress_path', $this->getWordpressPath());
 		}
 
+		$oldDomain = get_option('famelo_wordpress_uri');
+
 		if ($this->hasDomainChanged() && $this->hasPathChanged()) {
-			$oldDomain = $this->parseDomain(get_option('famelo_wordpress_uri'));
-			$newDomain = $this->parseDomain($this->getWordpressUri());
 			$this->updateDomainReferences($oldDomain, $newDomain);
 			update_option('famelo_wordpress_path', $this->getWordpressPath());
 			update_option('famelo_wordpress_uri', $this->getWordpressUri());
-			echo '
-			<link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/css/bootstrap-combined.min.css" rel="stylesheet">
-			<style>
-			.wrapper {
-				width: 800px;
-				margin: 100px auto 0;
-				overflow: hidden;
-				background: #f7f7f7;
-				border: 1px solid #dfdfdf;
-				padding: 30px;
-			}
-			table {
-				font-size: 12px;
-				background: white;
-			}
-			</style>
-			<div class="wrapper">
-				<h3>The Domain has been automatically changed!</h3>
-				<div class="alert alert-success">
-  					A Domain + Path change was detected:
-				</div>
-				<table class="table table-condensed table-bordered">
-				<tr>
-					<th></th><th>Old</th><th>New</th>
-				</tr>
-				<tr>
-					<th>Domain</th>
-					<td>' . $oldDomain . '</td>
-					<td>' . $newDomain . '</td>
-				</tr>
-				<tr>
-					<th>Path</th>
-					<td>' . get_option('famelo_wordpress_path') . '</td>
-					<td>' . $this->getWordpressPath() . '</td>
-				</tr>
-				</table>
-			<strong>You can now reload to continue :)</strong>
-			</div>';
+			$this->output($oldDomain, $newDomain);
 			exit();
 		}
+	}
+
+	public function output($oldDomain, $newDomain) {
+		echo '
+		<link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/css/bootstrap-combined.min.css" rel="stylesheet">
+		<style>
+		.wrapper {
+			width: 800px;
+			margin: 100px auto 0;
+			overflow: hidden;
+			background: #f7f7f7;
+			border: 1px solid #dfdfdf;
+			padding: 30px;
+		}
+		table {
+			font-size: 12px;
+			background: white;
+		}
+		</style>
+		<div class="wrapper">
+			<h3>The Domain has been automatically changed!</h3>
+			<div class="alert alert-success">
+					A Domain + Path change was detected:
+			</div>
+			<table class="table table-condensed table-bordered">
+			<tr>
+				<th></th><th>Old</th><th>New</th>
+			</tr>
+			<tr>
+				<th>Domain</th>
+				<td>' . $oldDomain . '</td>
+				<td>' . $newDomain . '</td>
+			</tr>
+			<tr>
+				<th>Path</th>
+				<td>' . get_option('famelo_wordpress_path') . '</td>
+				<td>' . $this->getWordpressPath() . '</td>
+			</tr>
+			</table>
+		<strong>You can now reload to continue :)</strong>
+		</div>';
 	}
 
 	public function hasDomainChanged() {
@@ -84,13 +90,14 @@ class FameloDomainChange {
 	}
 
 	public function getWordpressUri() {
-		$env = $GLOBALS['HTTP_SERVER_VARS'];
-		return 'http' . ($env['SSL_SESSION_ID'] ? 's' : '') . '://' . $env['HTTP_HOST'] . ( php_sapi_name() == 'cgi' ? $env['PATH_INFO'] : $env['SCRIPT_NAME'] );
+		$env = $_SERVER;
+		$uri = 'http' . ($env['SSL_SESSION_ID'] ? 's' : '') . '://' . $env['HTTP_HOST'] . $env['SCRIPT_NAME'];
+		return $this->parseDomain($uri);
 	}
 
 	public function getWordpressPath() {
-		$env = $GLOBALS['HTTP_SERVER_VARS'];
-		$path = str_replace('//', '/', str_replace('\\', '/', php_sapi_name() == 'cgi' || php_sapi_name() == 'isapi' ? $env['PATH_TRANSLATED'] : $env['SCRIPT_FILENAME']));
+		$env = $_SERVER;
+		$path = str_replace('//', '/', str_replace('\\', '/', $env['SCRIPT_FILENAME']));
 		preg_match('/(.*?)(wp-.+|index.php)/', $path, $match);
 		return $match[1];
 	}
