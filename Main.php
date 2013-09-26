@@ -1,204 +1,106 @@
 <?php
 /*
-Plugin Name: Automatic Domain Change
-Description: Automatically changes the domain of a WordPress blog
+Plugin Name: Dish
+Description: Plugin to manage and present all your delicious Dishes
 Author: Marc Neuhaus <mneuhaus@famelo.com>
 Version: 0.0.1
 */
 
-// --
-
-/**
- * Automatic Domain Changer class
- *
- * @author	Tommy Lacroix <tlacroix@nuagelab.com>
- */
-class FameloDomainChange {
+class FameloDish {
 	public function __construct() {
-		if (!defined('WP_ADMIN')) {
-			// Avoid side-effects by only executing in the backend
-			return;
-		}
-
-		$newDomain = $this->getWordpressUri();
-
-		if (get_option('famelo_wordpress_uri') === FALSE) {
-			add_option('famelo_wordpress_uri', get_option('siteurl'));
-		}
-		if (get_option('famelo_wordpress_path') === FALSE) {
-			add_option('famelo_wordpress_path', $this->getWordpressPath());
-		}
-
-		$oldDomain = get_option('famelo_wordpress_uri');
-
-		if ($this->hasDomainChanged() && $this->hasPathChanged()) {
-			$this->updateDomainReferences($oldDomain, $newDomain);
-			update_option('famelo_wordpress_path', $this->getWordpressPath());
-			update_option('famelo_wordpress_uri', $this->getWordpressUri());
-			$this->output($oldDomain, $newDomain);
-			exit();
-		}
+		add_action('init', array($this, 'init'));
+		add_filter('template_include', array( $this, 'template_include' ) );
 	}
 
-	public function output($oldDomain, $newDomain) {
-		echo '
-		<link href="//netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/css/bootstrap-combined.min.css" rel="stylesheet">
-		<style>
-		.wrapper {
-			width: 800px;
-			margin: 100px auto 0;
-			overflow: hidden;
-			background: #f7f7f7;
-			border: 1px solid #dfdfdf;
-			padding: 30px;
-		}
-		table {
-			font-size: 12px;
-			background: white;
-		}
-		</style>
-		<div class="wrapper">
-			<h3>The Domain has been automatically changed!</h3>
-			<div class="alert alert-success">
-					A Domain + Path change was detected:
-			</div>
-			<table class="table table-condensed table-bordered">
-			<tr>
-				<th></th><th>Old</th><th>New</th>
-			</tr>
-			<tr>
-				<th>Domain</th>
-				<td>' . $oldDomain . '</td>
-				<td>' . $newDomain . '</td>
-			</tr>
-			<tr>
-				<th>Path</th>
-				<td>' . get_option('famelo_wordpress_path') . '</td>
-				<td>' . $this->getWordpressPath() . '</td>
-			</tr>
-			</table>
-		<strong>You can now reload to continue :)</strong>
-		</div>';
+	public function init() {
+		register_post_type('dish',
+			array(
+				'labels' => array(
+					'name' => 'Dishes',
+					'singular_name' => 'dish',
+					'add_new' => 'Add New',
+					'add_new_item' => 'Add New Dish',
+					'edit' => 'Edit',
+					'edit_item' => 'Edit Dish',
+					'new_item' => 'New Dish',
+					'view' => 'View',
+					'view_item' => 'View Dish',
+					'search_items' => 'Search Dish',
+					'not_found' => 'No Dishes found',
+					'not_found_in_trash' => 'No Dishes found in Trash',
+					'parent' => 'Parent Dish'
+				),
+
+				'public' => true,
+				'menu_position' => 15,
+				'supports' => array('title', 'editor'),
+				'taxonomies' => array(''),
+				// 'menu_icon' => plugins_url( 'images/image.png', __FILE__ ),
+				'has_archive' => true
+			)
+		);
+
+		// Add new "Locations" taxonomy to Posts
+		register_taxonomy('dish_category', 'dish', array(
+			'hierarchical' => true,
+			'labels' => array(
+				'name' => _x( 'Dish Categories', 'taxonomy general name' ),
+				'singular_name' => _x( 'Dish Category', 'taxonomy singular name' ),
+				'search_items' =>  __( 'Search Dish Categories' ),
+				'all_items' => __( 'All Dish Categories' ),
+				'parent_item' => __( 'Parent Dish Category' ),
+				'parent_item_colon' => __( 'Parent Dish Category:' ),
+				'edit_item' => __( 'Edit Dish Category' ),
+				'update_item' => __( 'Update Dish Category' ),
+				'add_new_item' => __( 'Add New Dish Category' ),
+				'new_item_name' => __( 'New Dish Category Name' ),
+				'menu_name' => __( 'Dish Categories' ),
+			),
+			// Control the slugs used for this taxonomy
+			'rewrite' => array(
+				'slug' => 'dish-category', // This controls the base slug that will display before each term
+				'with_front' => false, // Don't display the category base before "/locations/"
+				'hierarchical' => true // This will allow URL's like "/locations/boston/cambridge/"
+			),
+		));
 	}
 
-	public function hasDomainChanged() {
-		return get_option('famelo_wordpress_uri') != $this->getWordpressUri();
-	}
-
-	public function hasPathChanged() {
-		return get_option('famelo_wordpress_path') != $this->getWordpressPath();
-	}
-
-	public function getWordpressUri() {
-		$env = $_SERVER;
-		$uri = 'http' . ($env['SSL_SESSION_ID'] ? 's' : '') . '://' . $env['HTTP_HOST'] . $env['SCRIPT_NAME'];
-		return $this->parseDomain($uri);
-	}
-
-	public function getWordpressPath() {
-		$env = $_SERVER;
-		$path = str_replace('//', '/', str_replace('\\', '/', $env['SCRIPT_FILENAME']));
-		preg_match('/(.*?)(wp-.+|index.php)/', $path, $match);
-		return $match[1];
-	}
-
-	public function parseDomain($uri) {
-		preg_match('/(.+)\/.*\.php$/', $uri, $match);
-		return str_replace('/wp-admin', '', $match[1]);
-	}
-
-	public function updateDomainReferences($old, $new) {
-		mysql_connect(DB_HOST, DB_USER, DB_PASSWORD);
-		mysql_select_db(DB_NAME);
-		mysql_query('SET NAMES ' . DB_CHARSET);
-		if (function_exists('mysql_set_charset')) {
-			mysql_set_charset(DB_CHARSET);
-		}
-
-		$tables = mysql_query('SHOW TABLES;');
-		while ($row = mysql_fetch_assoc($tables)) {
-			$table = current($row);
-
-			// Skip if the table name doesn't match the wordpress prefix
-			if (substr($t, 0, strlen($wpdb->prefix)) != $wpdb->prefix) {
-				continue;
-			}
-
-			// Get table indices
-			$id = NULL;
-			$indexes = mysql_query('SHOW INDEX FROM ' . $table);
-			while ($row = mysql_fetch_assoc($indexes)) {
-				if ($row['Key_name'] == 'PRIMARY') {
-					$id = $row['Column_name'];
-					break;
-				} elseif ($row['Non_unique'] == 0) {
-					$id = $row['Column_name'];
+	public function template_include( $templatePath ) {
+		$object = get_queried_object();
+		if (isset($object->term_id)) {
+			if ($object->taxonomy === 'dish_category') {
+				$templateName = "taxonomy-{$object->taxonomy}.php";
+				if ( $themeFile = locate_template(array('templates/' . $templateName, $templateName))) {
+					$templatePath = $themeFile;
+				} else {
+					$templatePath = plugin_dir_path( __FILE__ ) . 'templates/' . $templateName;
 				}
 			}
-			if ($id === NULL) {
-				// No unique index found, skip table.
-				continue;
-			}
-			$rows = mysql_query('SELECT * FROM ' . $table);
-			while ($row = mysql_fetch_assoc($rows)) {
-				$fields = array();
-				$sets = array();
-				// Process all columns
-				foreach ($row as $k => $v) {
-					$ov = $v;
-					$sv = unserialize($v);
-					if ($sv) {
-						// Column value was serialized
-						$v = $sv;
-						$serialized = TRUE;
-					} else {
-						// Column value was not serialized
-						$serialized = FALSE;
-					}
-
-					// Replace
-					$v = $this->replace($old, $new, $v);
-
-					// Reserialize if needed
-					if ($serialized === TRUE) {
-						$v = serialize($v);
-					}
-
-					// If value changed, replace it
-					if ($ov != $v) {
-						$sets[] = '`' . $k . '`="' . mysql_real_escape_string($v) . '"';
-					}
-				}
-
-				// Update table if we have something to set
-				if (count($sets) > 0) {
-					$sql = 'UPDATE ' . $table . ' SET ' . implode(',', $sets) . ' WHERE `' . $id . '`=' . $row[$id] . ' LIMIT 1;';
-					mysql_query($sql);
+		}
+		if ( get_post_type() == 'dish' ) {
+			if ( is_single() ) {
+				$templateName = "single-dish.php";
+				if ( $themeFile = locate_template(array('templates/' . $templateName, $templateName))) {
+					$templatePath = $themeFile;
+				} else {
+					$templatePath = plugin_dir_path( __FILE__ ) . 'templates/' . $templateName;
 				}
 			}
-
 		}
-	}
-
-	public function replace($search, $replace, $subject) {
-		if (is_array($subject)) {
-			foreach ($subject as $key => $value) {
-				$subject[$key] = $this->replace($search, $replace, $value);
-			}
-		} elseif (is_object($subject)) {
-			foreach ($subject as $key => $value) {
-				$subject->$key = $this->replace($search, $replace, $value);
-			}
-		} elseif (is_string($subject)) {
-			$searchWithWWW = str_replace('://', '://www.', $search);
-			$subject = str_replace($oldWithWWW, $replace, $subject);
-			$subject = str_replace($search, $replace, $subject);
-		}
-		return $subject;
+		return $templatePath;
 	}
 }
 
+function famelo_dish_get_template($templateName) {
+	$templateName.= '.php';
+	if ( $themeFile = locate_template(array('templates/' . $templateName, $templateName))) {
+		$templatePath = $themeFile;
+	} else {
+		$templatePath = plugin_dir_path( __FILE__ ) . 'templates/' . $templateName;
+	}
+	return $templatePath;
+}
 
-$changer = new FameloDomainChange();
+new FameloDish();
 
 ?>
